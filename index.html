@@ -1,0 +1,58 @@
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { ingredients, cuisine, time, diff, goal } = req.body;
+
+  if (!ingredients || !ingredients.length) {
+    return res.status(400).json({ error: 'No ingredients provided' });
+  }
+
+  const prompt = `You are a creative recipe expert. The user has these ingredients: ${ingredients.join(', ')}.
+${cuisine ? `Cuisine preference: ${cuisine}.` : ''}
+${time ? `Max cooking time: ${time}.` : ''}
+${diff ? `Difficulty: ${diff}.` : ''}
+${goal ? `Nutritional goal: ${goal}.` : ''}
+
+Generate exactly 3 delicious recipes they can make (or mostly make) with these ingredients. Minor pantry staples like salt, pepper, oil are fine to assume available.
+
+Respond ONLY with valid JSON, no markdown, no backticks, no extra text:
+{
+  "recipes": [
+    {
+      "name": "Recipe Name",
+      "cuisine": "Cuisine type",
+      "time": "25 mins",
+      "difficulty": "Easy",
+      "description": "One enticing sentence description",
+      "ingredients": ["200g chicken breast, diced", "3 cloves garlic, minced"],
+      "steps": ["Step one here", "Step two here", "Step three here"],
+      "macros": { "calories": 450, "protein": 32, "carbs": 45, "fat": 12 }
+    }
+  ]
+}`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content?.map(b => b.text || '').join('') || '';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    res.status(200).json(parsed);
+  } catch (e) {
+    console.error('Recipe generation error:', e);
+    res.status(500).json({ error: 'Failed to generate recipes' });
+  }
+}
